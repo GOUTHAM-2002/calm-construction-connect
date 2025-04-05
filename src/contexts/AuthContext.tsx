@@ -31,44 +31,37 @@ interface AuthContextType {
   isAuthenticated: boolean;
 }
 
-// Interface for stored credentials
-interface StoredCredentials {
-  email: string;
-  password: string;
-}
-
-const AUTH_STORAGE_KEY = 'calm_construction_auth_creds';
+// Keys for localStorage
+const SESSION_STORAGE_KEY = 'calm_construction_session';
+const USER_ID_STORAGE_KEY = 'calm_construction_user_id';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [session, setSession] = useState<Session | null>(null);
+  // Initialize state from localStorage if available
+  const [session, setSession] = useState<Session | null>(() => {
+    const storedSession = localStorage.getItem(SESSION_STORAGE_KEY);
+    return storedSession ? JSON.parse(storedSession) : null;
+  });
+  
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
-  // Function to securely store credentials
-  const storeCredentials = (email: string, password: string) => {
-    try {
-      const credentials: StoredCredentials = { email, password };
-      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(credentials));
-    } catch (error) {
-      console.error('Error storing credentials:', error);
+  // Update localStorage when session changes
+  useEffect(() => {
+    if (session) {
+      localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
+      // Store only the user ID, not the entire user object
+      if (session.user) {
+        localStorage.setItem(USER_ID_STORAGE_KEY, session.user.id);
+      }
+    } else {
+      localStorage.removeItem(SESSION_STORAGE_KEY);
+      localStorage.removeItem(USER_ID_STORAGE_KEY);
     }
-  };
-
-  // Function to retrieve stored credentials
-  const getStoredCredentials = (): StoredCredentials | null => {
-    try {
-      const storedData = localStorage.getItem(AUTH_STORAGE_KEY);
-      if (!storedData) return null;
-      return JSON.parse(storedData) as StoredCredentials;
-    } catch (error) {
-      console.error('Error retrieving credentials:', error);
-      return null;
-    }
-  };
+  }, [session]);
 
   useEffect(() => {
     const initializeAuth = async () => {
@@ -83,35 +76,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(session.user);
           await fetchProfile(session.user.id);
         } else {
-          // No valid session, try to login with stored credentials
-          console.log('No valid session, checking for stored credentials');
-          const credentials = getStoredCredentials();
+          // No valid session, check if we have a stored session
+          console.log('No valid session, checking localStorage');
+          const storedSession = localStorage.getItem(SESSION_STORAGE_KEY);
+          const storedUserId = localStorage.getItem(USER_ID_STORAGE_KEY);
           
-          if (credentials) {
-            console.log('Found stored credentials, attempting automatic login');
+          if (storedSession && storedUserId) {
+            console.log('Found stored session, attempting to restore');
             try {
-              const { error, data } = await supabase.auth.signInWithPassword({
-                email: credentials.email,
-                password: credentials.password
-              });
+              // Try to refresh the session
+              const { data, error } = await supabase.auth.refreshSession();
               
               if (error) {
-                console.error('Auto-login error:', error.message);
-                // Don't show error toast to user on auto-login failure
+                console.error('Session refresh error:', error.message);
+                // Clear invalid session data
+                localStorage.removeItem(SESSION_STORAGE_KEY);
+                localStorage.removeItem(USER_ID_STORAGE_KEY);
                 setLoading(false);
-              } else if (data.user) {
-                console.log('Auto-login successful');
-                // Don't show success toast on auto-login
+              } else if (data.session) {
+                console.log('Session refresh successful');
                 setSession(data.session);
                 setUser(data.user);
                 await fetchProfile(data.user.id);
               }
             } catch (error) {
-              console.error('Auto-login exception:', error);
+              console.error('Session refresh exception:', error);
               setLoading(false);
             }
           } else {
-            console.log('No stored credentials found');
+            console.log('No stored session found');
             setLoading(false);
           }
         }
@@ -122,18 +115,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   
     // Set a timeout to ensure loading state is reset even if auth fails
-  const timeoutId = setTimeout(() => {
-    if (loading) {
-      console.log('Auth initialization timeout - forcing loading to false');
-      setLoading(false);
-    }
-  }, 5000); // 5 second timeout as a safety measure
+    const timeoutId = setTimeout(() => {
+      if (loading) {
+        console.log('Auth initialization timeout - forcing loading to false');
+        setLoading(false);
+      }
+    }, 5000); // 5 second timeout as a safety measure
 
-  initializeAuth();
+    initializeAuth();
 
-  return () => {
-    clearTimeout(timeoutId);
-  };
+    return () => {
+      clearTimeout(timeoutId);
+    };
   }, []);
 
   const fetchProfile = async (userId: string) => {
@@ -169,30 +162,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         toast.error(error.message || 'Invalid email or password');
         setLoading(false);
       } else if (data.user) {
-        // Store credentials for auto-login on refresh
-        storeCredentials(email, password);
+        // Store session in localStorage (not credentials)
+        setSession(data.session);
+        setUser(data.user);
+        localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(data.session));
+        localStorage.setItem(USER_ID_STORAGE_KEY, data.user.id);
+        
         toast.success("Login successful! Redirecting...");
         
         // Fetch user profile to determine where to navigate
         const { data: profileData } = await supabase
           .from('profiles')
-          .select('user_role')
+          .select('*')
           .eq('id', data.user.id)
           .single();
         
-        // Navigate to the appropriate dashboard based on user role
         if (profileData) {
+          setProfile(profileData as UserProfile);
+          
+          // Navigate to the appropriate dashboard based on user role
           const dashboardPath = profileData.user_role === 'patient' ? '/patient' : '/therapist';
-          // Navigate first
+          
+          // Navigate first, then reload the page after a short delay
           navigate(dashboardPath);
-          // Then trigger a page refresh after a short delay to ensure navigation completes
           setTimeout(() => {
             window.location.reload();
           }, 100);
         } else {
           // If profile not found, navigate to a default route
           navigate('/patient');
-          // Then trigger a page refresh
           setTimeout(() => {
             window.location.reload();
           }, 100);
@@ -239,8 +237,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = async () => {
     setLoading(true);
     try {
-      // Remove stored credentials on logout
-      localStorage.removeItem(AUTH_STORAGE_KEY);
+      // Remove session data on logout
+      localStorage.removeItem(SESSION_STORAGE_KEY);
+      localStorage.removeItem(USER_ID_STORAGE_KEY);
       
       const { error } = await supabase.auth.signOut();
       if (error) {
@@ -253,6 +252,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setSession(null);
       setUser(null);
       toast.success('Logged out successfully');
+      navigate('/login');
     } catch (error) {
       console.error('Logout exception:', error);
       toast.error('Logout failed. Please try again.');
@@ -323,4 +323,23 @@ export function useAuth() {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
+}
+
+// Helper functions for direct access to auth state
+export function getSessionFromStorage(): Session | null {
+  try {
+    const storedSession = localStorage.getItem(SESSION_STORAGE_KEY);
+    return storedSession ? JSON.parse(storedSession) : null;
+  } catch (error) {
+    console.error('Error retrieving session from localStorage:', error);
+    return null;
+  }
+}
+
+export function getUserIdFromStorage(): string | null {
+  return localStorage.getItem(USER_ID_STORAGE_KEY);
+}
+
+export function isUserAuthenticated(): boolean {
+  return !!getSessionFromStorage();
 }
