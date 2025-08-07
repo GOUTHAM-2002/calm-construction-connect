@@ -29,6 +29,7 @@ import { toast } from "sonner";
 import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
+import { ProfilePictureUpload } from "@/components/shared/ProfilePictureUpload";
 
 const formSchema = z.object({
   full_name: z.string().min(2, { message: "Full name is required" }),
@@ -116,42 +117,6 @@ export default function RegisterPatient() {
     },
     mode: "onChange",
   });
-
-  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      setProfileImage(file);
-      setProfileImagePreview(URL.createObjectURL(file));
-
-      // Upload image immediately
-      setIsUploadingImage(true);
-      try {
-        const fileExt = file.name.split(".").pop();
-        const fileName = `${Math.random()}.${fileExt}`;
-        const filePath = `${fileName}`;
-
-        const { error: uploadError } = await supabase.storage
-          .from("avatars")
-          .upload(filePath, file);
-
-        if (uploadError) {
-          throw uploadError;
-        }
-
-        const { data: urlData } = supabase.storage
-          .from("avatars")
-          .getPublicUrl(filePath);
-        setUploadedAvatarUrl(urlData?.publicUrl);
-        toast.success("Profile picture uploaded successfully!");
-      } catch (error: any) {
-        console.error("Error uploading avatar:", error);
-        toast.error(`Failed to upload profile picture: ${error.message}`);
-        setUploadedAvatarUrl(null);
-      } finally {
-        setIsUploadingImage(false);
-      }
-    }
-  };
 
   const nextStep = async () => {
     const fields = formSteps[currentStep].fields;
@@ -616,61 +581,24 @@ export default function RegisterPatient() {
                     </Label>
                   </div>
 
-                  <div className="flex flex-col items-center justify-center gap-6 py-8">
-                    {profileImagePreview ? (
-                      <div className="relative w-32 h-32 rounded-full overflow-hidden border-2 border-primary/20">
-                        <img
-                          src={profileImagePreview}
-                          alt="Profile preview"
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                    ) : (
-                      <div className="w-32 h-32 rounded-full bg-muted flex items-center justify-center">
-                        <User className="h-16 w-16 text-muted-foreground/50" />
-                      </div>
+                  <ProfilePictureUpload
+                    onImageSelect={setProfileImage}
+                    onImagePreview={setProfileImagePreview}
+                    uploadedAvatarUrl={uploadedAvatarUrl}
+                    isUploading={isUploadingImage}
+                    setUploadedAvatarUrl={setUploadedAvatarUrl}
+                  />
+
+                  <p className="text-sm text-muted-foreground text-center max-w-md">
+                    Adding a photo helps therapists connect with you and builds
+                    trust. Your photo will be visible to therapists on the
+                    platform.
+                    {uploadedAvatarUrl && (
+                      <span className="block mt-2 text-green-400 text-xs">
+                        ✓ Your profile picture has been uploaded successfully!
+                      </span>
                     )}
-
-                    <label
-                      htmlFor="profilePic"
-                      className={cn(
-                        "cursor-pointer flex items-center gap-2 px-4 py-2 rounded-md transition-colors",
-                        isUploadingImage
-                          ? "bg-muted text-muted-foreground cursor-not-allowed"
-                          : uploadedAvatarUrl
-                          ? "bg-green-500/10 text-green-400 hover:bg-green-500/20"
-                          : "bg-primary/10 text-primary hover:bg-primary/20"
-                      )}
-                    >
-                      <Upload className="h-4 w-4" />
-                      {isUploadingImage
-                        ? "Uploading..."
-                        : uploadedAvatarUrl
-                        ? "✓ Uploaded - Change Photo"
-                        : profileImage
-                        ? "Change Photo"
-                        : "Upload Photo"}
-                    </label>
-                    <input
-                      id="profilePic"
-                      type="file"
-                      accept="image/*"
-                      onChange={handleImageChange}
-                      className="hidden"
-                      disabled={isUploadingImage}
-                    />
-
-                    <p className="text-sm text-muted-foreground text-center max-w-md">
-                      Adding a photo helps therapists connect with you and
-                      builds trust. Your photo will be visible to therapists on
-                      the platform.
-                      {uploadedAvatarUrl && (
-                        <span className="block mt-2 text-green-400 text-xs">
-                          ✓ Your profile picture has been uploaded successfully!
-                        </span>
-                      )}
-                    </p>
-                  </div>
+                  </p>
                 </motion.div>
               </motion.div>
             )}

@@ -9,8 +9,6 @@ import { Label } from "@/components/ui/label";
 import { AuthLayout } from "@/components/layouts/AuthLayout";
 import { useAuth } from "@/contexts/AuthContext";
 import {
-  Check,
-  ChevronsUpDown,
   Eye,
   EyeOff,
   Upload,
@@ -19,19 +17,29 @@ import {
   User,
   Mail,
   Lock,
+  Phone,
+  MessageSquare,
+  Globe,
+  Heart,
+  Image,
+  Plus,
+  X,
   Award,
   Clock,
-  MessageSquare,
   GraduationCap,
   Briefcase,
-  Phone,
-  Globe,
-  Image,
+  Check,
+  ChevronsUpDown,
   PoundSterling,
-  X,
-  Plus,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { supabase } from "@/lib/supabaseClient";
+import { toast } from "sonner";
+import { Textarea } from "@/components/ui/textarea";
+import { Progress } from "@/components/ui/progress";
+import { cn } from "@/lib/utils";
+import { ProfilePictureUpload } from "@/components/shared/ProfilePictureUpload";
+import { UserRole } from "@/contexts/AuthContext";
 import {
   Popover,
   PopoverContent,
@@ -45,11 +53,6 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
-import { cn } from "@/lib/utils";
-import { Textarea } from "@/components/ui/textarea";
-import { supabase } from "@/lib/supabaseClient";
-import { toast } from "sonner";
-import { UserRole } from "@/contexts/AuthContext";
 import {
   Select,
   SelectContent,
@@ -57,7 +60,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 
 // Define titles by expert type
@@ -228,44 +230,6 @@ export default function RegisterExpert() {
     },
     mode: "onChange",
   });
-
-  const handleProfileImageChange = async (
-    e: React.ChangeEvent<HTMLInputElement>
-  ) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      setProfileImage(file);
-      setProfileImagePreview(URL.createObjectURL(file));
-
-      // Upload image immediately as requested
-      setIsUploadingImage(true);
-      try {
-        const fileExt = file.name.split(".").pop();
-        const fileName = `${Math.random()}.${fileExt}`;
-        const filePath = `${fileName}`;
-
-        const { error: uploadError } = await supabase.storage
-          .from("avatars")
-          .upload(filePath, file);
-
-        if (uploadError) {
-          throw uploadError;
-        }
-
-        const { data: urlData } = supabase.storage
-          .from("avatars")
-          .getPublicUrl(filePath);
-        setUploadedAvatarUrl(urlData?.publicUrl);
-        toast.success("Profile picture uploaded successfully!");
-      } catch (error: any) {
-        console.error("Error uploading avatar:", error);
-        toast.error(`Failed to upload profile picture: ${error.message}`);
-        setUploadedAvatarUrl(null);
-      } finally {
-        setIsUploadingImage(false);
-      }
-    }
-  };
 
   const nextStep = async () => {
     const fields = formSteps[currentStep].fields;
@@ -1034,47 +998,12 @@ export default function RegisterExpert() {
                   </div>
 
                   <div className="flex flex-col items-center justify-center gap-6 py-8">
-                    {profileImagePreview ? (
-                      <div className="relative w-32 h-32 rounded-full overflow-hidden border-2 border-primary/20">
-                        <img
-                          src={profileImagePreview}
-                          alt="Profile preview"
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                    ) : (
-                      <div className="w-32 h-32 rounded-full bg-muted flex items-center justify-center">
-                        <User className="h-16 w-16 text-muted-foreground/50" />
-                      </div>
-                    )}
-
-                    <label
-                      htmlFor="profilePic"
-                      className={cn(
-                        "cursor-pointer flex items-center gap-2 px-4 py-2 rounded-md transition-colors",
-                        isUploadingImage
-                          ? "bg-muted text-muted-foreground cursor-not-allowed"
-                          : uploadedAvatarUrl
-                          ? "bg-green-500/10 text-green-400 hover:bg-green-500/20"
-                          : "bg-primary/10 text-primary hover:bg-primary/20"
-                      )}
-                    >
-                      <Upload className="h-4 w-4" />
-                      {isUploadingImage
-                        ? "Uploading..."
-                        : uploadedAvatarUrl
-                        ? "✓ Uploaded - Change Photo"
-                        : profileImage
-                        ? "Change Photo"
-                        : "Upload Photo"}
-                    </label>
-                    <input
-                      id="profilePic"
-                      type="file"
-                      accept="image/*"
-                      onChange={handleProfileImageChange}
-                      className="hidden"
-                      disabled={isUploadingImage}
+                    <ProfilePictureUpload
+                      onImageSelect={setProfileImage}
+                      onImagePreview={setProfileImagePreview}
+                      uploadedAvatarUrl={uploadedAvatarUrl}
+                      isUploading={isUploadingImage}
+                      setUploadedAvatarUrl={setUploadedAvatarUrl}
                     />
 
                     <p className="text-sm text-muted-foreground text-center max-w-md">
